@@ -76,6 +76,13 @@
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .games a.scene span { font-size: 12px; -webkit-line-clamp: 3; }
+  /* EXPERIMENTS get no thumbnail. A small sketch does not earn the
+     picture, and a broken/absent <img> in a grid of them looks like a
+     mistake — so the shelf is text-only on purpose and says so. */
+  .experiments .scenes { grid-template-columns: repeat(3, 1fr); }
+  .experiments a.scene .body { padding: 11px 12px 12px; gap: 3px; }
+  .experiments a.scene span { -webkit-line-clamp: 3; }
+
   a.scene i {
     position: absolute; right: 7px; top: -24px;
     font-style: normal; font-size: 9px; opacity: .55;
@@ -273,6 +280,20 @@
             <b>objects lab</b>
             <span>grass, plant, tree, flower — four soli-house plants from
                   one recipe, with the knobs to read it.</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="cat experiments">
+      <div class="cat-head"><b>experiments</b><span>small sketches — no thumbnail, no promises</span></div>
+      <div class="scenes">
+        <a class="scene" href="pipes.html">
+          <div class="body">
+            <b>pipes</b>
+            <span>a living schematic three layers deep. it draws itself,
+                  tours its own eight angles, and twice a turn the grids
+                  fall exactly into line.</span>
           </div>
         </a>
       </div>

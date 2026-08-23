@@ -58,13 +58,21 @@ export const PALETTES = [
   // one, so the blush is a flush of the same face rather than a
   // sticker in an unrelated colour. Kept out of the random deal (see
   // `PALETTE_DEAL_IDS`): a skin-toned bear is just a beige bear.
+  // CIRCUIT — the five flats of the pipes board. Kept out of the deal
+  // like `skin` is: it is a page's palette, not a character's, and a
+  // signal-red bear on the gloss sheet is a different project. The
+  // pipes page names it so its inhabitants are made of the same colours
+  // as the marks they live among.
+  { id: 'circuit', label: 'circuit', colors: ['#f2b705', '#ee7b2b', '#e2325f', '#1f9b52', '#1e6fb0'] },
+
   { id: 'skin', label: 'skin', colors: ['#F7DFCE', '#EFC4A6', '#D79E76', '#A9704B', '#F0A99A'] },
 ];
 
 export const PALETTE_IDS = PALETTES.map(p => p.id);
 // what an un-opinionated character may be poured in. `skin` is asked
 // for by name or pinned by hand, never dealt.
-export const PALETTE_DEAL_IDS = PALETTE_IDS.filter(id => id !== 'skin');
+const NOT_DEALT = ['skin', 'circuit'];
+export const PALETTE_DEAL_IDS = PALETTE_IDS.filter(id => !NOT_DEALT.includes(id));
 export const PALETTE_BY_ID = Object.fromEntries(PALETTES.map(p => [p.id, p]));
 
 // ---------------------------------------------------------------
