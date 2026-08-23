@@ -572,6 +572,18 @@ function genLayer(rng, l, group, budget, wires) {
 // schematic rather than a second focal point.
 const FIGURES = [];
 
+// THE CAST IS NEVER BEHIND THE BOARD. A walker on the bottom layer was
+// seen through two grids of hairline and the lift vanished behind every
+// plate it rose past — a character is the one round, real thing here and
+// the board kept cutting it. So the cast lives on its own render layer and
+// `frame` draws the board, clears DEPTH, and draws the cast over it: every
+// character still occludes itself correctly (a maw behind its own head
+// stays behind it) and the cast still sorts among ITSELF, but no stroke or
+// plate of the schematic can ever come in front of one. `depthTest:false`
+// per mesh would have been cheaper to write and wrong — face features
+// would then be drawn in mesh order, through the back of the skull.
+const CAST_LAYER = 1;
+
 // A character costs ~14ms to build and there are fourteen of them, so
 // building the cast inside `gen` cost 120–200ms — a dozen dropped frames
 // at exactly the moment the board is supposed to be drawing itself
@@ -600,6 +612,8 @@ function hatch(f) {
   const built = buildGloss(recipe, { materialFor });
   built.group.position.y = -built.bounds.minY;
   f.g.add(built.group);
+  // the cast is on its own render layer — see CAST_LAYER in `frame`
+  f.g.traverse(o => o.layers.set(CAST_LAYER));
   f.scale = f.headH / built.L.H;
   f.built = built;
   f.life = createGlossFace(built, { gaze: true });
@@ -772,7 +786,17 @@ function frame(t, dt = 1 / 60) {
   camera.position.set(Math.sin(y) * Math.cos(PITCH) * d, ty + Math.sin(PITCH) * d,
                       Math.cos(y) * Math.cos(PITCH) * d);
   camera.lookAt(0, ty, 0);
+  // two passes: the board, then the cast over it (see CAST_LAYER). The
+  // scene has a Color background, and three.js clears for that whatever
+  // `autoClear` says — so the second pass switches off only the COLOUR
+  // clear and lets the forced clear wipe depth, which is the point.
+  camera.layers.set(0);
   renderer.render(scene, camera);
+  camera.layers.set(CAST_LAYER);
+  renderer.autoClearColor = false;
+  renderer.render(scene, camera);
+  renderer.autoClearColor = true;
+  camera.layers.set(0);
 }
 
 function loop(now) {
