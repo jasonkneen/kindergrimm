@@ -444,6 +444,15 @@ file look like a phantom `SyntaxError`.
 - Features are **proud, not cut in**: a plate's front sits at z = 0
   and its body runs backward, so it can never float off the
   silhouette.
+- **A small plate needs fewer segments.** `curveSegments` is a count
+  PER CURVE, so `plateGeometry` handed the same forty-four to a
+  body-sized eye and to a six-pixel blush dot — one census came to
+  53,700 triangles a character, of which six blushes were 59,940
+  between them. It now scales the count by the outline's own size
+  (measured off the SHAPE, so a new outline gets the saving without
+  `plateGeometry` knowing its fields), which is 15,400 triangles for
+  the same character with nothing visibly different. Every gloss page
+  gets it. The gloss frame is GEOMETRY-bound, not pixel-bound.
 - **A shadow comes from geometry and the studio, never from a colour
   picked to look like one.** An eye rim — the same outline a size
   larger in a darkened body tone — was tried as a stand-in for the

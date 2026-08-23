@@ -276,9 +276,35 @@ export function plateGeometry(spec) {
   const straight = shape.curves.every(c => c.isLineCurve)
     && shape.holes.every(h => h.curves.every(c => c.isLineCurve));
 
+  // AND A SMALL PLATE NEEDS FEWER OF THEM. `curveSegments` is a count
+  // per curve, so it hands the same forty-four to a body-sized eye and
+  // to a blush dot six pixels across — and a blush came to 9,990
+  // triangles against the whole body's 7,632. Census of one built
+  // character: 53,700 triangles, of which the two spectacle lenses were
+  // 19,962 and six blushes 59,940 between them. Scale the count by the
+  // outline's own SIZE and the same character is a fraction of that,
+  // with nothing visibly different — a dot that small cannot show
+  // twenty-nine segments, let alone forty-four.
+  //
+  // It is measured off the SHAPE rather than off `spec.w/h` so a new
+  // outline gets the saving without this function knowing its fields.
+  // measured for EVERY outline, not only the curved ones: a polyline
+  // needs no curve segments but it still gets a bevel, and leaving
+  // `big` at a default there gave a straight mouth bar the bevel
+  // resolution of a mid-sized plate for no reason.
+  const pts = shape.getPoints(8);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of pts) {
+    if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+  }
+  const big = Math.max(x1 - x0, y1 - y0);
+  const detail = Math.min(1, Math.sqrt(big / .7));
+
   const g = new THREE.ExtrudeGeometry(shape, {
-    depth, steps: 1, curveSegments: straight ? 1 : seg(SEG, 8),
-    bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: seg(6, 2),
+    depth, steps: 1, curveSegments: straight ? 1 : seg(SEG * detail, 8),
+    bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel,
+    bevelSegments: seg(6 * detail, 2),
   });
   g.translate(0, 0, -(depth + bevel));            // front crest to z = 0
   g.computeBoundingBox();
