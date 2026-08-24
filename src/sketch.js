@@ -108,6 +108,13 @@ export class Sketch {
     this.canvas = document.createElement('canvas');
     this.canvas.width = w; this.canvas.height = h;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+    // `ink` is what the drawing is black WITH, and `baseInk` is what a
+    // part falls back to when it lets go of a colour. They are two
+    // things because a STYLE gets to decide the second one: an
+    // impressionist canvas has no lamp black anywhere on it, a sumi
+    // key block is warm, an iron-gall contour is brown. A part still
+    // says `setInk(col) … setInk(null)` and never learns about it.
+    this.baseInk = INK;
     this.ink = INK;
     this.boil(1);
   }
@@ -124,7 +131,8 @@ export class Sketch {
     return pairs[pairs.length - 1][0];
   }
 
-  setInk(c) { this.ink = c || INK; }
+  setInk(c) { this.ink = c || this.baseInk; }
+  setBaseInk(c) { this.baseInk = c || INK; this.ink = this.baseInk; }
   inkA(a) { return `rgba(${this.ink[0]},${this.ink[1]},${this.ink[2]},${Math.min(1, a)})`; }
   colA(c, a) { return `rgba(${c[0]},${c[1]},${c[2]},${Math.min(1, a)})`; }
   paperA(a) { return `rgba(${PR[0]},${PR[1]},${PR[2]},${a})`; }
@@ -167,6 +175,7 @@ export class Sketch {
 
   // ---- the graphite stroke: a wobbling ribbon with dry edges ----
   stroke(pts, w, o = {}) {
+    if (!pts || pts.length < 2) return;
     const ctx = this.ctx;
     const alpha = o.alpha ?? this.jr(.68, .97);
     const amp = o.amp ?? (w * .5 + .9);
@@ -260,6 +269,7 @@ export class Sketch {
 
   // thin pencil line: tremor on the wobble, sometimes the pen lifts
   sline(pts, w, alpha, color) {
+    if (!pts || pts.length < 2) return;   // a one-point path is not a line
     const ctx = this.ctx;
     const rs = resample(pts, 3);
     const p1 = this.jr(0, 7), p2 = this.jr(0, 7), f = this.jr(4, 9);

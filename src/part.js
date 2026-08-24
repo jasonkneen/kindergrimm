@@ -23,6 +23,19 @@ export function setRender({ u, frames } = {}) {
   if (frames) BOIL_FRAMES = frames;
 }
 
+// The HAND. A part describes marks; who makes them is a scene's
+// choice — `src/brush/bsketch.js` is a second hand built on p5.brush
+// and it is chosen here, once, before any part is built. A hand may
+// need a moment to settle before its canvas is read (the brush one
+// blits a shared plate), so it is asked for `done()` afterwards.
+let makeSketch = (w, h) => new Sketch(w, h);
+
+export function setHand(fn) { makeSketch = fn || ((w, h) => new Sketch(w, h)); }
+
+// …and anything else a scene draws by hand — an emote, a floor line —
+// should come off the same one, or half the page is in another medium.
+export function hand(w, h) { return makeSketch(w, h); }
+
 export function makePart({ name, wU, hU, pivot = [.5, .5], states = ['idle'], draw, seed }) {
   const frames = {}, canvases = {};
   const W = Math.max(4, Math.round(wU * U)), H = Math.max(4, Math.round(hU * U));
@@ -34,9 +47,10 @@ export function makePart({ name, wU, hU, pivot = [.5, .5], states = ['idle'], dr
     if (frames[st]) return;
     frames[st] = []; canvases[st] = [];
     for (let f = 0; f < BOIL_FRAMES; f++) {
-      const s = new Sketch(W, H);
+      const s = makeSketch(W, H);
       s.boil(hashStr(`${seed}:${name}:${st}:${f}`));
       draw(s, st);
+      s.done?.();
       const tex = new THREE.CanvasTexture(s.canvas);
       tex.anisotropy = 4;
       frames[st].push(tex);

@@ -8,15 +8,21 @@
 // drawn one per frame so the page fills in like someone working
 // down the sheet instead of freezing for several seconds.
 import * as THREE from 'three';
-import { PAPER, Sketch, chaikin } from './sketch.js';
-import { setRender, U } from './part.js';
+import { PAPER, chaikin } from './sketch.js';
+import { setRender, U, hand } from './part.js';
 import { addPaper, makeFloorLine } from './paper.js';
 import { newRecipe, buildCharacter, ensureParams } from './rig.js';
-import { MEDIA, MEDIA_IDS } from './media.js';
+import { mulberry32, hashStr } from './rng.js';
+import { MEDIA, MEDIA_IDS, STYLE_IDS, ALL_MEDIA_IDS } from './media.js';
 import { SPECIES, SPECIES_IDS } from './species.js';
 import { createAnimator } from './anim.js';
 
-setRender({ u: 118, frames: 2 });
+// Two concessions to 35 rigs at once — half the boil frames and a
+// lower canvas resolution — and a way to turn both back up, because
+// the same page drawn by a slower hand (crowdbrush.html) wants to be
+// measured at more than one setting.
+const params = new URLSearchParams(location.search);
+setRender({ u: +params.get('u') || 118, frames: +params.get('frames') || 2 });
 
 THREE.ColorManagement.enabled = false;
 
@@ -27,19 +33,29 @@ const TOP_MARGIN = .18;          // the HUD sits over this strip
 // every row is a shelf: a drawn floor line all its characters stand on
 const rowFloorY = row => -(row - (ROWS - 1) / 2) * CELL_H - CELL_H * .40;
 
-const params = new URLSearchParams(location.search);
 // 'all' mixes them per character — the whole range on one page
-const media = [...MEDIA_IDS, 'all'].includes(params.get('media')) ? params.get('media') : 'all';
+// `?seed=` pins the whole page: cell i is derived from (seed, i), so
+// the same 35 characters come back whatever order they get drawn in —
+// which is what makes crowd.html and crowdbrush.html comparable, the
+// same people drawn by two different hands.
+const pageSeed = params.get('seed');
+const cellRng = i => pageSeed ? mulberry32(hashStr(`${pageSeed}:${i}`)) : Math.random;
+
+// 'all' deals the six MATERIALS, 'styles' the nine ways of painting
+const media = [...ALL_MEDIA_IDS, 'all', 'styles'].includes(params.get('media')) ? params.get('media') : 'all';
+const deck = media === 'styles' ? STYLE_IDS : MEDIA_IDS;
 const species = [...SPECIES_IDS, 'all'].includes(params.get('species')) ? params.get('species') : 'all';
 
 const links = (host, items, current, key) => {
   document.getElementById(host).innerHTML = items.map(([val, label]) => {
-    const q = new URLSearchParams({ media, species });
+    const q = new URLSearchParams(params);      // keep ?u= and friends
+    q.set('media', media); q.set('species', species);
     q.set(key, val);
     return `<a href="?${q}"${val === current ? ' class="sel"' : ''}>${label}</a>`;
   }).join(' · ');
 };
-links('medias', [['all', 'all'], ...MEDIA_IDS.map(m => [m, MEDIA[m].label])], media, 'media');
+links('medias', [['all', 'all'], ...MEDIA_IDS.map(m => [m, MEDIA[m].label]),
+                 ['styles', 'styles'], ...STYLE_IDS.map(m => [m, MEDIA[m].label])], media, 'media');
 links('species', [['all', 'all'], ...SPECIES_IDS.map(s => [s, SPECIES[s].label])], species, 'species');
 
 const stage = document.getElementById('stage');
@@ -90,8 +106,9 @@ function drawCell(i, recipe = null) {
     cells[i].face.dispose();
   }
   if (!recipe) {
-    recipe = newRecipe();
-    recipe.media = media === 'all' ? MEDIA_IDS[(Math.random() * MEDIA_IDS.length) | 0] : media;
+    const rnd = cellRng(i);
+    recipe = newRecipe((rnd() * 1e9) | 0);
+    recipe.media = (media === 'all' || media === 'styles') ? deck[(rnd() * deck.length) | 0] : media;
     // 'all' shelves the page like a bestiary: two rows of people,
     // then a row each of dogs, cats and nightmares
     recipe.species = species === 'all' ? ROW_SPECIES[i / COLS | 0] : species;
@@ -154,7 +171,7 @@ renderer.domElement.addEventListener('pointerdown', ev => {
 // turn — the face redraws itself at a new angle), mutters for a bit,
 // or throws an emote. Most of the crowd just stands there breathing.
 function makeEmoteMesh(kind) {
-  const s = new Sketch(110, 110);
+  const s = hand(110, 110);
   s.boil((Math.random() * 1e9) | 0);
   const c = s.ctx, m = 55;
   if (kind === 'bang') {
@@ -198,6 +215,7 @@ function makeEmoteMesh(kind) {
     s.sline(d.concat([d[0]]), 2.2, .85);
     s.sline([[m - 5, 52], [m - 7, 64]], 1.6, .5);
   }
+  s.done?.();
   const tex = new THREE.CanvasTexture(s.canvas);
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(.34, .34),
@@ -240,7 +258,6 @@ function glance(cell) {
 
 let nextLife = 2;
 const lifeLog = window.__life = { glances: 0, talks: 0, emotes: 0, poses: 0, faces: 0 };
-window.__crowd = { cells, fallAsleep: (i, t) => fallAsleep(cells[i], t) };   // debug handle
 const FACES = ['angry', 'scared', 'crying'];
 
 // ---- common sense: what a character does next depends on what it
@@ -327,7 +344,8 @@ function decide(cell, t) {
 // ---- loop -------------------------------------------------------
 onResize();
 let last = performance.now();
-renderer.setAnimationLoop(now => {
+
+function frame(now) {
   const t = now / 1000, dt = Math.min(.1, (now - last) / 1000);
   last = now;
 
@@ -394,4 +412,26 @@ renderer.setAnimationLoop(now => {
     }
   }
   renderer.render(scene, camera);
-});
+}
+
+renderer.setAnimationLoop(frame);
+
+// A hidden panel throttles requestAnimationFrame to nothing, so the
+// page can only be driven — and measured — from the outside. `pump`
+// yields between frames or the awaits never resolve.
+window.__crowd = {
+  frame, cells, U,
+  fallAsleep: (i, t) => fallAsleep(cells[i], t),
+  get drawn() { return N - queue.length; },
+  async pump(n = 1, step = 1000 / 60) {
+    for (let i = 0; i < n; i++) { frame(last + step); await new Promise(r => setTimeout(r, 0)); }
+    return this.drawn;
+  },
+  // fill the whole page and say what it cost
+  async fill() {
+    const t0 = performance.now();
+    let frames = 0;
+    while (queue.length && frames < 4000) { frame(last + 16.7); frames++; await new Promise(r => setTimeout(r, 0)); }
+    return { ms: Math.round(performance.now() - t0), frames, drawn: this.drawn };
+  },
+};
