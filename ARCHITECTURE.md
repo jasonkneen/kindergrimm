@@ -2640,3 +2640,327 @@ player touches.
 
 `?shot=N` auto-plays N seconds synchronously at load, for the headless
 screenshot that makes the menu thumbnail. The command is in `marbles.js`.
+
+---
+
+## 16. The second hand (`crowdbrush.html`, `src/brush/`)
+
+A HAND is the thing that makes the marks. `src/sketch.js` is drawai's
+own — wobbling ribbon strokes, dry granulation, wrist overshoots,
+fills that are techniques. `src/brush/` is a SECOND one, built on
+[p5.brush](https://github.com/acamposuribe/p5.brush) (`vendor/brush.esm.js`,
+the standalone build: no p5.js, WebGL2, MIT, 77KB), and `crowdbrush.html`
+is the crowd drawn with it.
+
+It is a parallel hand, not a replacement, the same way `carve.js`,
+`gshape.js` and `oshape.js` are parallel generators. The drawn pages
+are untouched and the parts do not know it exists.
+
+### What it plugs into
+
+Nothing in `src/parts/` changed, and nothing needed to. Parts describe
+marks — they call `F.media.tone / skin / edge`, which call `s.stroke`,
+`s.hatchFill`, `s.washFill` — so replacing the object behind `s`
+replaces every mark on the page. `part.js` gained one lever:
+
+```js
+setHand(fn)   // fn(w, h) -> a sketch; default is `new Sketch(w, h)`
+hand(w, h)    // ask for one, for a scene that draws its own bits
+```
+
+`BSketch` **extends `Sketch`**, and that is the whole trick:
+
+- the RNG, the path helpers (`blobPts`, `wobbly`, `poly`) and the
+  colour helpers are inherited, so a seed picks the same GEOMETRY in
+  both hands. `crowd.html?seed=7` and `crowdbrush.html?seed=7` are the
+  same thirty-five people drawn twice;
+- only the MARK-MAKERS are overridden. Anything not overridden still
+  works, so the port can never be half-broken, only half-done;
+- `this.ctx` stays a real 2D context. Parts reach into it 53 times —
+  clips, transforms, flat fills — and every one of those still works.
+
+`inkFill` and `paperFill` are deliberately NOT overridden: they are
+flat value laid under the drawing, a part calls them a dozen times,
+and a brush fill each would be the most expensive thing on the page
+for no visible difference.
+
+### The plate
+
+p5.brush draws into the canvas it was loaded onto. Parts need their
+own transparent canvas each, so there is ONE plate — a single WebGL
+canvas — that every `BSketch` borrows: draw a mark, composite it,
+blit it onto the part's own 2D canvas, hand the plate back.
+
+Four things about that, each one bought with a bug:
+
+1. **One canvas, ever.** `brush.load()` on a second canvas leaves
+   p5.brush holding framebuffers from the first, and every flush after
+   that logs `INVALID_OPERATION: bindFramebuffer`. The plate is
+   RESIZED (same element, same context) to fit each part instead —
+   exactly, not rounded up, because a composite covers the whole plate
+   and every spare pixel is paid for. A resize is 1.7ms and the two
+   boil frames of a part share a size, so it happens about once a part.
+
+2. **Marks are drawn under the 2D context's transform.** `rig.js`
+   translates the canvas so parts can draw in character coordinates,
+   and parts add their own translate/rotate/scale on top. p5.brush
+   knows nothing about that context, so `bplate.begin()` decomposes
+   `ctx.getTransform()` into brush's own translate/rotate/scale, and
+   the blit back runs at identity. Skip this and a part drawing at
+   x = -60 puts its mark off the left of the plate: most of every
+   character is simply not there, and what survives sits at the wrong
+   offset. It looked like one arc of a head's outline and nothing else.
+
+3. **One mark at a time.** p5.brush composites a mark by blending its
+   mask over the whole dirty region, and on a TRANSPARENT plate the
+   pixels where the new mask is empty come out transparent instead of
+   keeping what was under them — so a second mark erases the first. On
+   the library's own opaque canvas this never shows. Every mark is
+   therefore composited and blitted immediately (~0.8ms), which is
+   most of why this hand costs what it does.
+
+4. **Clear to transparent BLACK.** `brush.clear()` clears to rgb(1,1,1)
+   with alpha 0, and blitting a premultiplied WebGL canvas in that
+   state replaces the destination's colour with white while leaving
+   its alpha alone. Every paper-filled shape a part had already laid
+   down came out a solid white block. `bplate.wipe()` clears the GL
+   buffer again afterwards.
+
+Ordering between the two halves is kept by a Proxy on `ctx`: any 2D
+call that draws or moves the frame flushes the plate first. Path
+building (`beginPath`/`lineTo`/…) does not, so a `poly(); fill()` pair
+is one flush, not six.
+
+### What it can and cannot do
+
+Every route p5.brush offers composites correctly on a transparent
+plate — brush tips of all three types (`default`, `marker`, `spray`),
+`hatch()` and `mass()` — with ONE exception:
+
+**`brush.fill()` cannot be used.** The watercolour fill — bleed, tide
+line and granulation out of one call, the library's headline feature —
+blends pigment into the canvas assuming paper underneath. On a
+transparent plate it writes an opaque near-white patch: 3077 white
+pixels inside a shape that should have been a translucent wash. It
+also costs a flat ~18ms whatever the shape's size, and a face asks for
+twenty-six of them, so it was never affordable either. A pool is
+therefore PAINTED (`BSketch.pour`): crossing passes of the wet tip
+inside the shape, then the tide line as a stroke, which is the mark
+the eye actually reads as watercolour.
+
+### The tips
+
+Six of drawai's own, in `bplate.js`, registered through `brush.add()`.
+Two rules:
+
+- **Flat pressure envelopes.** Pressure in p5.brush MULTIPLIES the
+  tip's size. A tip that also tapers itself multiplies twice: a stroke
+  authored to thin to .35 at the ends came out at .12 of its width and
+  the whole crowd drew as faint outlines. The taper belongs to the
+  caller — that is where a part says what kind of mark it wants — and
+  it lives in a narrow band (.5 to 1.15), because below about .5 a
+  stroke stops reading as a mark at all.
+- **Alpha is a property of the TIP**, not of the colour, so it is
+  asked for in six buckets and each bucket is a registered brush. Six
+  steps is under the eye's resolution for a pencil line and keeps the
+  registry to a few dozen entries instead of one per stroke.
+
+`spacing` is the cost knob for every stroke on the page — how often
+the tip stamps. It is also the continuity knob, and the two fight:
+.85 draws a stroke in half the time of .4 and reads as dots at part
+scale. The tips sit at .55–.65 with high `grain` (smoother) and low
+`scatter`, which is what stopped the contours coming out speckled.
+
+### What it costs
+
+A character costs **292ms against the graphite hand's 32ms — 9.1×** —
+measured the only way that means anything, `buildCharacter` over all
+six media × four species in the same page, both hands back to back.
+It is flat across the media (graphite 267, ink 278, watercolour 239,
+oil 384, chalk 263, marker 214 for a human), because the cost is not
+the medium: it is the per-mark composite, and a character makes about
+200 marks, each one a render, a blit and a clear.
+
+Do not read the page-fill time off a hidden browser panel. Measured
+there the brush crowd fills in 30s and the GRAPHITE one in 22s, which
+says almost nothing about either hand — whatever the panel throttles
+swamps a 9× difference in drawing. The crowd fills one character per
+frame either way, so the honest statement is that this page fills
+about nine times slower than the drawn one, progressively, and reads
+as slow rather than frozen.
+
+`?u=` and `?frames=` are on both crowd pages now (the defaults are
+still 118 and 2), so the resolution and the boil can be turned up for
+a still or down for speed. `?hand=graphite` puts the original hand
+back on the brush page, for an A/B without changing anything else.
+
+---
+
+## 17. The styles (`styles.html`, `timeline.html`, `src/styles/`)
+
+Nine ways of PAINTING, on top of the six materials: gothic 1310,
+renaissance 1500, baroque 1620, ukiyo-e 1830, impressionism 1874,
+expressionism 1910, cubism 1911, dada 1918, surrealism 1929.
+
+### What a style may do that a material may not
+
+A material answers three questions about a SHAPE. A style answers the
+same three and then four more about the PICTURE, and it needs to,
+because only about half of these movements are defined by their marks.
+An outside critic put the limit exactly:
+
+> "It mostly reads as one palette + one texture per row rather than
+> nine distinct visual languages… your system nails movements defined
+> by MARK and SURFACE (expressionism, dada, baroque, ukiyo-e) and
+> struggles with movements defined by FORM (cubism) or MEANING
+> (surrealism, gothic's symbolic gold space)."
+
+So there are four optional fields, all one line to adopt, and each of
+them buys back one of those movements:
+
+| | what it is | who needed it |
+|---|---|---|
+| `ink` | the character's BLACK — every `inkA()` a part reaches for | impressionism, which banned lamp black |
+| `ground` | the paper the style is painted on | all nine; it is the fastest discriminator there is |
+| `backdrop(s, o)` | the SPACE the figure stands in | gothic's gold, baroque's void, surrealism's gag |
+| `panel` | the shape of that space | a gothic arch is tall, a surrealist window is wide |
+
+**`ink: [r,g,b]`** reaches the void eyes, the pupils, the contours, the
+nostrils and the teeth through one line in `rig.js`, and no part
+learns about it — `Sketch` grew a `baseInk` under its `ink` so a part
+can still say `setInk(col) … setInk(null)` and get the style's black
+back rather than the project's. That is the answer to "let the style
+change the eyes": an impressionist void eye is deep violet, gothic's
+is iron gall, ukiyo-e's is warm sumi, and expressionism's is the
+blackest thing on the page.
+
+**`backdrop(s, { w, h, seed, floor })`** hands the style a transparent
+panel behind the figure and lets it paint whatever it likes: a gilded
+polyptych compartment with a pointed arch, a void that falls off to
+black at the corners, a Magritte sky with a hard cast shadow going the
+wrong way, a red hanko seal, a column of newsprint, the same head seen
+from a second angle. `floor` is where the figure's feet are, so a
+backdrop can put a horizon behind them without knowing anything about
+the page. It is drawn ONCE per character rather than per boil frame —
+which is exactly why the SEMANTIC things belong there and can never
+strobe.
+
+The page owns how big a panel may be and the style owns its shape:
+`makeBackdrop` scales the whole thing to the room available, because
+an arch that asked for 1.12 cells grew up into the row above it.
+
+And the rule that keeps this from becoming wallpaper, which is the
+same critic's:
+
+> **The squint test.** If a row only differs from its neighbours when
+> blurred by what is behind it, the style transform is not carrying
+> enough. The backdrop is the second half of the argument, never the
+> whole of it.
+
+### A style is a medium that is allowed to overrule the palette
+
+`MEDIA` holds two families behind one interface (`tone / skin / edge`,
+§4). They are not the same kind of thing:
+
+- a **MATERIAL** (`src/media.js`) is what the drawing is MADE of —
+  graphite, ink, oil. It answers the character's colours; it never
+  argues with them.
+- a **STYLE** (`src/styles/`) is a whole way of painting, and it
+  overrules the palette as a matter of course, because a gothic panel
+  has five pigments in it and no others. `pigment.js` is the bench
+  that makes that cheap: `nearest(col, BOX)` answers the character's
+  colour out of the style's own box, `step(col, RAMP)` keeps its VALUE
+  when the hue goes, and `spin` / `opposite` / `sat` are there for the
+  styles that reason in complements.
+
+The split matters at the page level, not just in the file tree:
+`MEDIA_IDS` is the six materials and is still what a page dealing
+`'all'` deals, so the house look does not drift. `STYLE_IDS` is the
+nine, dealt by `?media=styles`. Both crowds list all fifteen, and the
+editor picked them up without being told.
+
+Adding one = a file in `src/styles/` + a line in its `index.js`.
+Nothing else in the project needs to know.
+
+### Both hands, and where the line between them falls
+
+A style is written once, in the shared vocabulary, and BOTH hands draw
+it — the graphite engine and the p5.brush one (§16). That is most of
+the value: nine styles × two hands is eighteen looks out of nine
+files. It also imposes the one rule that is easy to get wrong:
+
+> **Micro-texture through `s.ctx`; expressive marks through the hand.**
+
+A crack in a panel, a halftone dot, a plank of wood grain is a
+hairline whatever is holding the pen — put it through `s.sline` and
+p5.brush hands back a 2px textured brush stroke, and gothic comes back
+from the shot looking like a shattered windscreen. A contour, a
+tratteggio comb, a comma of broken colour IS a mark someone made, and
+each hand should say it its own way. Getting the split wrong is the
+single most common way a style looks right in one hand and broken in
+the other.
+
+### The two things a still cannot show
+
+Both are on `window.__styles`, and both were written because something
+got past a screenshot.
+
+**`audit()`** — builds every style against every species and times it.
+A style is handed whatever outline a part happens to have, and some
+are degenerate: a two-point sliver, a zero-area shape, a horn six
+pixels across. A style that throws on one of those takes the whole
+character down, which is worse than looking wrong — nothing downstream
+renders at all. (It caught exactly that, twice.)
+
+**`flicker(style)`** — the composition rule:
+
+> **A style may not ROLL a decision that changes the composition.**
+
+Every part is redrawn once per BOIL FRAME with a different seed. A
+halo, a sky, a torn patch or a facet cut decided by `s.chance()` is
+re-decided two or three times a second, and the character strobes.
+Texture may roll — that is the boil, and it is the house style — but
+structure may not. Anything a style wants to decide per character has
+to key off something STABLE: the shape's size against its plate, its
+proportions, a positional hash. (Gothic's halo is a size test against
+`s.w` for exactly this reason: haloed characters stay haloed.)
+
+Measuring it: draw both boil frames of every part, average each down
+to a 16×16 grid, compare. The boil moves a couple of percent — the
+materials sit at 0.022 — and a structural flicker reads several times
+that.
+
+### The two pages
+
+`styles.html` is the CONTACT SHEET: one row per style in era order,
+the same five people down every column, so the paint is the only
+variable. It is the page the styles were judged on, and it takes
+`?style=` for one row large, `?hand=graphite`, `?seed=`, `?n=` and
+`?shot` for a headless still.
+
+`timeline.html` is the same nine on a DATED LINE, and the axis is
+honest — linear in years, nothing compressed. That is the whole point:
+the page is mostly empty, and the emptiness is the content. There are
+190 years of nothing between the gothic panel and Leonardo and 210
+more between Caravaggio and Hokusai; then impressionism, Die Brücke,
+cubism, Dada and surrealism arrive inside fifty-five years and pile
+into each other. A log axis, or one movement per column, would throw
+that away.
+
+The pile-up is handled the way a museum wall handles it: a cluster
+that would overlap its neighbour is lifted onto a higher SHELF with a
+plumb line down to its own year — shelves being the project's existing
+furniture, since every crowd row already stands on one. Greedy packing
+puts everything before 1874 on the ground floor and stacks the
+twentieth century five high, which is not a decision, it is the data.
+
+The camera FOLLOWS that staircase: it sits down on the single shelf in
+1310 and lifts and pulls back as you walk into the 1900s. Framing the
+full height everywhere instead spends most of the page on six hundred
+years of empty air.
+
+Two things `addPaper` had to learn for it, and they are general: a
+page thirty units long needs its grain to REPEAT rather than stretch
+(otherwise the paper's tooth blows up into visible blobs), and it must
+not repeat the creases or the signature with it — the artist signing
+the page nine times is worse than a plain sheet.

@@ -47,7 +47,20 @@ canvas — legal because parts draw in character coordinates — and
 stands three real rigs in three small renderers), so the page cannot
 drift from the code it explains. Its share card is drawn by the
 generator too — `assets/og.html` is the generator, `assets/how-og.png`
-the output, and the command to regenerate it is in that file's head. `voxel.html` is the **voxel lab** — the same
+the output, and the command to regenerate it is in that file's head. `crowdbrush.html` is the **second hand**: the crowd, drawn by
+[p5.brush](https://github.com/acamposuribe/p5.brush) instead of
+`sketch.js` — a parallel HAND behind the same part contract
+(`src/brush/`, ARCHITECTURE.md §16). `src/parts/` is untouched by it;
+`part.js` gained `setHand()` and that is the whole seam. Same seed,
+two hands: `crowd.html?seed=7` against `crowdbrush.html?seed=7`.
+`styles.html` and `timeline.html` are the **styles**: nine ways of
+PAINTING on top of the six materials — gothic 1310 through surrealism
+1929 — living in `src/styles/` behind the same `tone/skin/edge`
+interface a medium has (ARCHITECTURE.md §17). The sheet is the same
+five people down every column with one style per row; the timeline is
+the same nine on an HONEST dated axis, which is why it is mostly empty
+and why the twentieth century has to stack five shelves high.
+`voxel.html` is the **voxel lab** — the same
 recipe idea built out of cubes instead of graphite, with its own hand,
 layout, parts and animator under `src/voxel/`; it shares nothing with
 the drawn generator but `rng.js`, and ARCHITECTURE.md §11 is its
@@ -105,6 +118,42 @@ file look like a phantom `SyntaxError`.
   child cannot fight what it cannot see. Give light a second job and
   the lamp-or-weapon choice in the `held` slot collapses, which is the
   only decision the game has.
+- Adding a **style** = one file in `src/styles/` + one line in its
+  `index.js`. A style is a medium that is ALLOWED to overrule the
+  character's palette (a gothic panel has five pigments and no more);
+  a material never is. `MEDIA_IDS` stays the six materials, so a page
+  dealing `'all'` still deals the house look; `STYLE_IDS` is the nine.
+- A style has FOUR more levers than a material, and they exist because
+  half these movements are not defined by their marks: `ink` (the
+  character's black — the void eyes included, which is how a style
+  changes an eye), `ground` (its own paper), `backdrop(s, o)` (the
+  SPACE the figure stands in — a gilded arch, a void, a Magritte sky
+  with the shadow going the wrong way) and `panel` (that space's
+  shape). A backdrop is drawn ONCE per character, not per boil frame,
+  which is why anything SEMANTIC belongs there and can never strobe.
+- The acceptance test for a style is the **squint test**: blur the
+  sheet, and if a row only differs from its neighbours because of what
+  is behind it, the style is not carrying enough. The backdrop is the
+  second half of the argument, never the whole of it.
+- Two rules a style breaks silently, both measurable, both on
+  `window.__styles`: **it may not throw on a degenerate outline**
+  (`audit()` builds every style × every species — a part will hand you
+  a two-point sliver), and **it may not ROLL a decision that changes
+  the composition** (`flicker()` — every part is redrawn per boil
+  frame, so a halo decided by `s.chance()` strobes; key it off
+  something stable like the shape's size against `s.w`).
+- **Micro-texture through `s.ctx`, expressive marks through the hand.**
+  A crack or a halftone dot is a hairline whoever is holding the pen;
+  a contour or a comma of colour is a mark someone made. Put a crack
+  through `s.sline` and p5.brush returns a 2px brush stroke — that is
+  why an early gothic came back looking like a shattered windscreen.
+- The **hand** is swappable, once, before any part is built:
+  `setHand(fn)` in `part.js`. `src/brush/bsketch.js` is the second one
+  and it EXTENDS `Sketch`, so a seed picks the same geometry and only
+  the marks change. Its four hard-won rules are in §16 and the shortest
+  one is this: **p5.brush's `brush.fill()` cannot be used on a
+  transparent plate** — it assumes paper underneath and writes opaque
+  white. Strokes, `hatch()` and `mass()` are all fine.
 - Adding an **object** = one file in `src/items/` + one line in
   `src/items/index.js`. **The stats ARE the drawing**: the same rolled
   params feed `draw()` and `statsOf()`, so a long blade is drawn long
@@ -495,8 +544,9 @@ did not check.
 What is worth doing yourself is the cheap, decidable half:
 
 - load every page (`index.html`, `editor.html`, `crowd.html`,
-  `game.html`, `marbles.html`, `items.html`, `objects.html`,
-  `photo.html`) and confirm the console
+  `crowdbrush.html`, `styles.html`, `timeline.html`, `game.html`,
+  `marbles.html`, `items.html`, `objects.html`, `photo.html`) and
+  confirm the console
   is clean — a
   stale import or a renamed export is a real bug and takes one reload
   to find;
