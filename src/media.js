@@ -1,6 +1,15 @@
 // The medium: what the face is MADE of. Parts describe shapes; the
 // medium decides how a shape gets its value, its colour and its edge.
 //
+// There are two families of them and they are the same interface.
+// MATERIALS (below) are what the drawing is made of — graphite, ink,
+// oil — and they never touch the character's colours. STYLES
+// (`src/styles/`) are whole ways of PAINTING — gothic, cubism — and
+// they overrule the palette as a matter of course, because a gothic
+// panel has five pigments in it and no others. `MEDIA` holds both;
+// `MEDIA_IDS` is the materials, which is what a page dealing 'all'
+// should still deal, and `STYLE_IDS` is the rest.
+//
 //   tone(s, pts, o)  — a mass: hair, a horn, the dark inside a socket
 //   skin(s, pts, col, o) — colour laid over the face and neck
 //   edge(s, pts, w, o)   — the contour that closes a shape
@@ -11,11 +20,12 @@
 // scribble / stipple / light — and each medium answers it in its own
 // vocabulary rather than ignoring it.
 import { INK } from './sketch.js';
+import { STYLES, STYLE_IDS } from './styles/index.js';
 
 const DENSITY = { black: 1, hatch: .72, scribble: .62, stipple: .5, light: .34 };
 const dens = style => DENSITY[style] ?? .7;
 
-export const MEDIA = {
+const MATERIALS = {
   graphite: {
     id: 'graphite', label: 'graphite', underdraw: true,
     tone(s, pts, o = {}) {
@@ -118,7 +128,10 @@ export const MEDIA = {
   },
 };
 
-export const MEDIA_IDS = Object.keys(MEDIA);
+export const MEDIA_IDS = Object.keys(MATERIALS);   // the six materials
+export { STYLE_IDS };                              // the nine styles
+export const ALL_MEDIA_IDS = [...MEDIA_IDS, ...STYLE_IDS];
+export const MEDIA = { ...MATERIALS, ...STYLES };
 
 function boxOf(pts) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;

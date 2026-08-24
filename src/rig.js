@@ -118,7 +118,14 @@ export function buildCharacter(recipe) {
           // the plane's pivot and let the part draw absolute numbers.
           sk.ctx.save();
           sk.ctx.translate(pivot[0] * sk.w - b.x * U, (1 - pivot[1]) * sk.h + b.y * U);
+          // A style may own the character's BLACK — the void eyes, the
+          // contour, every `inkA()` a part reaches for. Impressionism
+          // banned lamp black; a sumi key block is warm; iron-gall is
+          // brown. One line here reaches every part without any of
+          // them knowing (see `Sketch.setBaseInk`).
+          if (F.media.ink) sk.setBaseInk(F.media.ink);
           def.draw(sk, P, st, F, b);
+          sk.setBaseInk(null);
           sk.ctx.restore();
         },
       });
